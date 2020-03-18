@@ -15,26 +15,17 @@ const marketTimes = (data) => {
 
   if (data && !marketTimesData[today]) {
     marketTimesData[today] = {
-      opensAt: moment(data.opens_at),
-      closesAt: moment(data.closes_at),
-      extendedOpensAt: moment(data.extended_opens_at),
-      extendedClosesAt: moment(data.extended_closes_at),
-      isMarketOpenToday: data.is_open,
-      isMarketClosedToday: !data.is_open,
+      closesAt: moment(data.next_close),
     };
   }
 
   const marketTimes = marketTimesData[today];
   const now = moment();
 
-  marketTimes.secondsLeftToMarketClosed = marketTimes.isMarketOpenToday ?
+  marketTimes.secondsLeftToMarketClosed = marketTimes.is_open ?
     moment.duration(marketTimes.closesAt.diff(now)).asSeconds() : 0;
-  marketTimes.secondsLeftToExtendedMarketClosed = marketTimes.isMarketOpenToday ?
-    moment.duration(marketTimes.extendedClosesAt.diff(now)).asSeconds() : 0;
-  marketTimes.isOpenNow = now.isAfter(marketTimes.opensAt) && now.isBefore(marketTimes.closesAt);
+  marketTimes.isOpenNow = data.is_open;
   marketTimes.isClosedNow = !marketTimes.isOpenNow;
-  marketTimes.isExtendedOpenNow = now.isAfter(marketTimes.extendedOpensAt) && now.isBefore(marketTimes.extendedClosesAt);
-  marketTimes.isExtendedClosedNow = !marketTimes.isExtendedOpenNow;
 
   return marketTimes;
 };

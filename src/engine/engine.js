@@ -7,6 +7,8 @@ const rh = require('../services/rhApiService');
 const tv = require('../services/tvApiService');
 const logger = require('../services/logService');
 
+const alpaca = require('../services/alpacaService');
+
 const {
   assert,
   parsePattern,
@@ -67,10 +69,9 @@ class Engine {
    * @returns {Promise<void>}
    */
   async loadRulesAndAccounts(frequency, overrideMarketClosed = OVERRIDE_MARKET_CLOSE) {
-    const { isExtendedClosedNow, isClosedNow } = this.marketHours;
-    const isMarketClosed = ENABLE_EXTENDED_HOURS ? isExtendedClosedNow : isClosedNow;
+    const { isClosedNow } = this.marketHours;
 
-    if (!overrideMarketClosed && isClosedNow && isMarketClosed) {
+    if (!overrideMarketClosed && isClosedNow) {
       return;
     }
 
@@ -120,13 +121,12 @@ class Engine {
 
   async processFeeds(frequency) {
     try {
-      const { isExtendedClosedNow, secondsLeftToExtendedMarketClosed, isClosedNow, secondsLeftToMarketClosed } = this.marketHours;
-      const isMarketClosed = ENABLE_EXTENDED_HOURS ? isExtendedClosedNow : isClosedNow;
-      const secondsToMarketClosed = ENABLE_EXTENDED_HOURS ? secondsLeftToExtendedMarketClosed : secondsLeftToMarketClosed;
+      const { isClosedNow, secondsLeftToMarketClosed } = this.marketHours;
+      const secondsToMarketClosed = secondsLeftToMarketClosed;
       this.rules[frequency] = this.rules[frequency].filter(r => r.enabled && !this.orderPendingMap.has(r._id.toString()));
       const rules = this.rules[frequency];
 
-      if ((!OVERRIDE_MARKET_CLOSE && isMarketClosed) || !rules.length) {
+      if ((!OVERRIDE_MARKET_CLOSE && isClosedNow) || !rules.length) {
         return;
       }
 
@@ -518,10 +518,9 @@ class Engine {
    * they expire
    */
   async populateAuthTokens() {
-    const { isExtendedClosedNow } = this.marketHours;
     const init = !this.users.length;
 
-    if (!OVERRIDE_MARKET_CLOSE && isExtendedClosedNow) {
+    if (!OVERRIDE_MARKET_CLOSE) {
       return;
     }
 
@@ -544,7 +543,7 @@ class Engine {
    * @returns {Promise<void>}
    */
   async populateMarketHours() {
-    this.marketHours = await rh.getMarketHours();
+    this.marketHours = await alpaca.getMarketHours();
   }
 
   /**
@@ -554,9 +553,8 @@ class Engine {
   async ping() {
     if (ENV === 'production') {
       setInterval(async () => {
-        const { isExtendedClosedNow, isClosedNow } = this.marketHours;
-        const isMarketClosed = ENABLE_EXTENDED_HOURS ? isExtendedClosedNow : isClosedNow;
-        if (!isMarketClosed || moment().minutes() % 30 === 0) {
+        const { isClosedNow } = this.marketHours;
+        if (!isClosedNow || moment().minutes() % 30 === 0) {
           logger.ping();
         }
       }, ONE_MINUTE);
