@@ -16,6 +16,7 @@ class AlpacaApiService {
     const clockData = await this.alpaca.getClock();
     return Utils.marketTimes(clockData);
   }
+
   getInstrumentBySymbol(symbol) {
     return this.alpaca.getAsset(symbol);
   }
@@ -28,6 +29,7 @@ class AlpacaApiService {
     this._account = account;
     return account;
   }
+
   getOrders() {
     return this.alpaca.getOrders({});
   }
