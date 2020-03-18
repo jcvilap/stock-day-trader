@@ -16,6 +16,21 @@ class AlpacaApiService {
     const clockData = await this.alpaca.getClock();
     return Utils.marketTimes(clockData);
   }
+  getInstrumentBySymbol(symbol) {
+    return this.alpaca.getAsset(symbol);
+  }
+
+  async getAccount() {
+    const account = await this._account ?
+      Promise.resolve(this._account) :
+      this.alpaca.getAccount();
+
+    this._account = account;
+    return account;
+  }
+  getOrders() {
+    return this.alpaca.getOrders({});
+  }
 }
 
 module.export = new AlpacaApiService();

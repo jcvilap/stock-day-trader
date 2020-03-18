@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 const uuid = require('uuid/v1');
 const crypto = require('crypto');
-const { getInstrumentBySymbol, getWithAuth, getJSON } = require('../services/rhApiService');
+const { getWithAuth, getJSON } = require('../services/rhApiService');
+const { getInstrumentBySymbol } = require('../services/alpacaService');
 const { ONE_MINUTE, FIVE_SECONDS } = require('../services/utils');
 
 const Rule = new mongoose.Schema({
@@ -26,12 +27,7 @@ const Rule = new mongoose.Schema({
   /**
    * Instrument in RB
    */
-  instrumentId: { type: String },
-  instrumentUrl: { type: String },
-  /**
-   * User id
-   */
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  assetId: { type: String },
   /**
    * Reference uuid to give the broker. User also to filter orders
    */
@@ -97,18 +93,17 @@ const Rule = new mongoose.Schema({
 
 // region HOOKS
 /**
- * Populates refId, instrumentId and instrumentUrl if not present
+ * Populates refId, assetId if not present
  */
 Rule.post('save', async function (doc) {
-  if (!(doc.refId && doc.instrumentId && doc.instrumentUrl)) {
+  if (!(doc.refId && doc.assetId)) {
     if (!doc.refId) {
       doc.set('refId', crypto.randomBytes(6).toString('hex'));
     }
 
-    if (!doc.instrumentId || !doc.instrumentUrl) {
+    if (!doc.assetId) {
       const instrument = await getInstrumentBySymbol(doc.symbol);
-      doc.set('instrumentUrl', instrument.url);
-      doc.set('instrumentId', instrument.id);
+      doc.set('assetId', instrument.id);
 
       if (!doc.exchange) {
         const market = await getJSON(instrument.market);

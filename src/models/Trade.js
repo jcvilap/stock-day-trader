@@ -31,10 +31,6 @@ const Trade = new mongoose.Schema({
    */
   targetReached: { type: Boolean, default: false },
   /**
-   * User id
-   */
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  /**
    * Id of the Rule executing the order
    */
   rule: { type: mongoose.Schema.Types.ObjectId, ref: 'Rule', required: true, index: true },

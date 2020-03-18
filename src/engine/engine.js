@@ -29,8 +29,8 @@ const ENV = 'production';
 
 class Engine {
   constructor() {
-    this.userAccounts = new Map();
     this.orderPendingMap = new Map();
+    this.userAccount = null;
     this.marketHours = {};
     this.users = [];
     this.rules = {
@@ -42,11 +42,9 @@ class Engine {
   async start() {
     try {
       await this.populateMarketHours();
-      await this.populateAuthTokens();
       await this.detectIntervalChange();
 
       setInterval(() => this.populateMarketHours(), FIVE_SECONDS);
-      setInterval(() => this.populateAuthTokens(), ONE_AND_A_HALF_MINUTES);
       setInterval(() => this.loadRulesAndAccounts(FIVE_SECONDS), FIVE_SECONDS);
       setInterval(() => this.loadRulesAndAccounts(ONE_MINUTE), ONE_MINUTE);
       setInterval(() => this.processFeeds(FIVE_SECONDS), FIVE_SECONDS);
@@ -81,33 +79,17 @@ class Engine {
 
     // Populate refId if not ready
     allRules.forEach(async rule => {
-      if (!(rule.refId && rule.instrumentId && rule.instrumentUrl)) {
+      if (!(rule.refId && rule.assetId)) {
         await rule.save();
       }
     });
 
     // Append user accounts
-    const accountPromises = this.users.map((user, index) => {
-      const userAccount = this.userAccounts.get(user._id.toString());
-
-      // Refresh account only after 10 mins
-      if (!userAccount || (((new Date()) - new Date(userAccount.date)) >= TEN_MINUTES)) {
-        return rh.getAccount(user)
-          .then(account => {
-            this.users[index].account = account;
-            this.userAccounts.set(user._id.toString(), { account, date: new Date() });
-          });
-      }
-    }).filter(a => a);
-
-    // Append user positions
-    const positionPromises = this.users.map((user, index) => rh.getPositions(user)
-      .then(positions => this.users[index].positions = positions));
+    const accountPromise = alpaca.getAccount().then((account) => this.userAccount = account);
 
     // Append rule orders by refId
     const orderPromises = this.rules[frequency].map((rule, index) => {
-      const user = this.users.find(({ _id }) => rule.user._id.equals(_id));
-      return this.getRuleOrders(user, rule)
+      return this.getRuleOrders(rule)
         .then((orders = []) => {
           if (orders.length) {
             set(this.rules, `${frequency}.${index}.orders`, orders);
@@ -115,7 +97,7 @@ class Engine {
         });
     });
 
-    return Promise.all(accountPromises.concat(orderPromises).concat(positionPromises))
+    return Promise.all([accountPromise].concat(orderPromises))
       .catch(error => logger.error(error));
   }
 
@@ -363,12 +345,11 @@ class Engine {
   /**
    * Helper function to fetch orders associated with a rule
    * @note Move into a helper service
-   * @param user
    * @param rule
    * @returns {Promise<PromiseLike | never>}
    */
-  getRuleOrders(user, rule) {
-    return rh.getOrders(user)
+  getRuleOrders(rule) {
+    return alpaca.getOrders()
       .then((orders = []) => orders
         .filter(o => isString(o.ref_id) && o.ref_id.endsWith(rule.refId)))
       .catch(error => {
@@ -511,31 +492,6 @@ class Engine {
 
       changeDetected = currentPrices !== prices;
     }
-  }
-
-  /**
-   * RH Tokens now expire in 86.4s, therefore this function will refresh it before
-   * they expire
-   */
-  async populateAuthTokens() {
-    const init = !this.users.length;
-
-    if (!OVERRIDE_MARKET_CLOSE) {
-      return;
-    }
-
-    if (init) {
-      this.users = (await User.find().lean()).map(idToString);
-    }
-
-    await Promise.all(this.users.map((user, index) => rh.auth(user.brokerConfig)
-      .then(token => this.users[index].token = token)))
-      .then(async () => {
-        if (init) {
-          await this.loadRulesAndAccounts(FIVE_SECONDS, true);
-          return this.loadRulesAndAccounts(ONE_MINUTE, true);
-        }
-      });
   }
 
   /**
