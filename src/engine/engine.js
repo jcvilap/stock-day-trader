@@ -2,7 +2,7 @@ const { get, uniq, isString, set } = require('lodash');
 const moment = require('moment');
 const { Query } = require('mingo');
 
-const { Trade, User, queries: { getActiveRulesByFrequency, getIncompleteTrades } } = require('../models');
+const { Trade, queries: { getActiveRulesByFrequency, getIncompleteTrades } } = require('../models');
 const rh = require('../services/rhApiService');
 const tv = require('../services/tvApiService');
 const logger = require('../services/logService');
@@ -32,7 +32,7 @@ class Engine {
     this.orderPendingMap = new Map();
     this.userAccount = null;
     this.marketHours = {};
-    this.users = [];
+    this.user = null;
     this.rules = {
       [FIVE_SECONDS]: [],
       [ONE_MINUTE]: [],
@@ -42,6 +42,9 @@ class Engine {
   async start() {
     try {
       await this.populateMarketHours();
+      await this.loadAccount();
+      await this.loadRulesAndAccounts(FIVE_SECONDS);
+      await this.loadRulesAndAccounts(ONE_MINUTE);
       await this.detectIntervalChange();
 
       setInterval(() => this.populateMarketHours(), FIVE_SECONDS);
@@ -56,6 +59,11 @@ class Engine {
       logger.error(error);
     }
   }
+
+  loadAccount() {
+    return alpaca.getAccount().then((account) => this.userAccount = account);
+  }
+
 
   /**
    * Prepares user objects for use on @method processFeeds.
@@ -84,9 +92,6 @@ class Engine {
       }
     });
 
-    // Append user accounts
-    const accountPromise = alpaca.getAccount().then((account) => this.userAccount = account);
-
     // Append rule orders by refId
     const orderPromises = this.rules[frequency].map((rule, index) => {
       return this.getRuleOrders(rule)
@@ -97,8 +102,7 @@ class Engine {
         });
     });
 
-    return Promise.all([accountPromise].concat(orderPromises))
-      .catch(error => logger.error(error));
+    return Promise.all(orderPromises).catch(error => logger.error(error));
   }
 
   async processFeeds(frequency) {
@@ -116,12 +120,8 @@ class Engine {
       const [quotes, trades] = await Promise.all([tv.getQuotes(...symbols), getIncompleteTrades()]);
       const promises = [];
 
-      rules.forEach(async (rule, ruleIndex) => {
+      const processRulesPromises = rules.map(async (rule, ruleIndex) => {
         try {
-          const userId = rule.user._id.toString();
-          const user = this.users.find(u => userId === u._id);
-          assert(user, `User ${rule.user._id} not found in rule ${rule._id}`);
-
           const quote = quotes.find(q => q.symbol === `${rule.exchange}:${rule.symbol}`);
           assert(quote, `Quote for ${rule.symbol} not found`);
 
@@ -239,7 +239,7 @@ class Engine {
 
           const { symbol, holdOvernight } = rule;
           const price = quote.close;
-          const metadata = { ...rule.toObject(), ...user, ...quote };
+          const metadata = { ...rule.toObject(), ...this.user, ...quote };
           const buyQuery = new Query(parsePattern(get(rule, 'strategy.in.query'), metadata, false));
           const sellQuery = new Query(parsePattern(get(rule, 'strategy.out.query'), metadata, true));
           assert(buyQuery.__criteria || sellQuery.__criteria, `No strategy found for rule ${rule._id}`);
@@ -248,7 +248,7 @@ class Engine {
           const profitValue = get(trade, 'profitValue', null);
           const riskPriceReached = riskValue > price;
           const profitPriceReached = profitValue && profitValue < price;
-          const commonOptions = { user, symbol, price, numberOfShares, rule, trade };
+          const commonOptions = { user: this.user, symbol, price, numberOfShares, rule, trade };
 
           /**
            * End of day is approaching (4PM EST), sell all shares in the last 30sec if rule is not holding overnight
@@ -334,7 +334,7 @@ class Engine {
         }
       });
 
-      return Promise.all(promises);
+      return Promise.all([...promises, ...processRulesPromises]);
     } catch (error) {
       logger.error(error);
     }
@@ -413,26 +413,22 @@ class Engine {
     }
 
     const options = {
-      account: get(user, 'account.url', null),
-      quantity: numberOfShares,
-      price: finalPrice,
       symbol,
+      qty: numberOfShares,
       side,
-      instrument: rule.instrumentUrl,
-      time_in_force: 'gtc',
       type: 'limit',
-      trigger: 'immediate',
-      override_day_trade_checks: rule.overrideDayTradeChecks,
-      ref_id: rule.UUID()
+      time_in_force: 'gtc',
+      limit_price: finalPrice,
+      client_order_id: rule.UUID(),
     };
-    const promise = rh.placeOrder(user, options)
+    const promise = alpaca.placeOrder(options)
       .then(order => {
         logger.orderPlaced({ symbol, price, ...order, name });
 
         // Update order id on trade
         if (side === 'buy') {
           if (!trade) {
-            trade = new Trade({ rule: ruleId, user: user._id.toString() });
+            trade = new Trade({ rule: ruleId });
           }
           trade.buyOrderId = order.id;
         } else {

@@ -22,7 +22,7 @@ const marketTimes = (data) => {
   const marketTimes = marketTimesData[today];
   const now = moment();
 
-  marketTimes.secondsLeftToMarketClosed = marketTimes.is_open ?
+  marketTimes.secondsLeftToMarketClosed = data.is_open ?
     moment.duration(marketTimes.closesAt.diff(now)).asSeconds() : 0;
   marketTimes.isOpenNow = data.is_open;
   marketTimes.isClosedNow = !marketTimes.isOpenNow;

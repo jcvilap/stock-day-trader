@@ -17,8 +17,8 @@ class LogService {
     const message = isString(msg) ? msg : this.formatJSON(msg, 0);
     const errorMsg = isString(err) ? err : this.formatJSON(err, 0);
     const finalMessage = `*${message}* ${errorMsg} ${stack}`.trim();
-    this.errorLogger.send(finalMessage);
     console.log(finalMessage);
+    this.errorLogger.send(finalMessage);
   }
 
   orderPlaced({ symbol, side, name, created_at = new Date(), price }) {

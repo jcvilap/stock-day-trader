@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const uuid = require('uuid/v1');
 const crypto = require('crypto');
-const { getWithAuth, getJSON } = require('../services/rhApiService');
+const { getJSON } = require('../services/rhApiService');
 const { getInstrumentBySymbol } = require('../services/alpacaService');
 const { ONE_MINUTE, FIVE_SECONDS } = require('../services/utils');
 
@@ -25,7 +25,7 @@ const Rule = new mongoose.Schema({
    */
   overrideDayTradeChecks: { type: Boolean, default: false },
   /**
-   * Instrument in RB
+   * Asset in Alpaca
    */
   assetId: { type: String },
   /**

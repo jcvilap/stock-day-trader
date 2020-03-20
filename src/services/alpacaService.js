@@ -33,6 +33,10 @@ class AlpacaApiService {
   getOrders() {
     return this.alpaca.getOrders({});
   }
+
+  placeOrder(options) {
+    return this.alpaca.createOrder(options);
+  }
 }
 
-module.export = new AlpacaApiService();
+module.exports = new AlpacaApiService();

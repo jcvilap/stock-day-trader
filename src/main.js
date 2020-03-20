@@ -27,7 +27,7 @@ class App {
     createApi(this.db);
     this.server.listen(ENGINE_PORT, () => {
       console.log('Engine running on port:', ENGINE_PORT);
-      //engine.start();
+      engine.start();
     });
   }
 

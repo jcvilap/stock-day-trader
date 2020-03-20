@@ -18,6 +18,6 @@ module.exports = async (request, response) => {
     const token = createJWToken({ user, expiresIn: 86400000 }); // 1 day
     response.status(200).send({ token });
   } else {
-    response.status(401).send({ message: `Incorrect password` });
+    response.status(401).send({ message: 'Incorrect password' });
   }
 };
