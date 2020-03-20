@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 const uuid = require('uuid/v1');
 const crypto = require('crypto');
-const { getJSON } = require('../services/rhApiService');
 const { getInstrumentBySymbol } = require('../services/alpacaService');
 const { ONE_MINUTE, FIVE_SECONDS } = require('../services/utils');
 
@@ -102,12 +101,11 @@ Rule.post('save', async function (doc) {
     }
 
     if (!doc.assetId) {
-      const instrument = await getInstrumentBySymbol(doc.symbol);
-      doc.set('assetId', instrument.id);
+      const asset = await getInstrumentBySymbol(doc.symbol);
+      doc.set('assetId', asset.id);
 
       if (!doc.exchange) {
-        const market = await getJSON(instrument.market);
-        doc.set('exchange', market.acronym);
+        doc.set('exchange', asset.exchange);
       }
     }
     await doc.save();
