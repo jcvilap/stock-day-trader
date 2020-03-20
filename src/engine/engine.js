@@ -3,7 +3,6 @@ const moment = require('moment');
 const { Query } = require('mingo');
 
 const { Trade, queries: { getActiveRulesByFrequency, getIncompleteTrades } } = require('../models');
-const rh = require('../services/rhApiService');
 const tv = require('../services/tvApiService');
 const logger = require('../services/logService');
 
@@ -13,16 +12,12 @@ const {
   assert,
   parsePattern,
   getValueFromPercentage,
-  idToString,
   FIVE_SECONDS,
-  TEN_MINUTES,
   ONE_MINUTE,
-  ONE_AND_A_HALF_MINUTES,
 } = require('../services/utils');
 
 // Todo: maybe move constants to `process.env.js`?
 const OVERRIDE_MARKET_CLOSE = false;
-const ENABLE_EXTENDED_HOURS = false;
 const MANUALLY_SELL_ALL = false;
 const DEBUG_MODE = true;
 const ENV = 'production';
@@ -140,18 +135,18 @@ class Engine {
             if (!lastOrder) {
               // Get fresh rule orders
               [rule.orders, lastOrder] = await Promise.all([
-                this.getRuleOrders(user, rule),
-                rh.getOrder(lastOrderId, user),
+                this.getRuleOrders(rule),
+                alpaca.getOrder(lastOrderId),
               ]);
             }
             assert(lastOrder, `Fatal error. Order not found for order id: ${lastOrderId} and trade id: ${trade._id}`);
 
-            const lastOrderIsFilled = ['partially_filled', 'filled'].includes(get(lastOrder, 'state'));
+            const lastOrderIsFilled = ['partially_filled', 'filled'].includes(get(lastOrder, 'status'));
             lastOrderIsSell = lastOrderId === get(trade, 'sellOrderId');
             lastOrderIsBuy = lastOrderId === get(trade, 'buyOrderId');
 
             if (lastOrderIsFilled) {
-              const price = Number(get(lastOrder, 'average_price'));
+              const price = Number(get(lastOrder, 'filled_avg_price'));
               const date = new Date(get(lastOrder, 'updated_at'));
 
               if (lastOrderIsBuy && !trade.buyPrice) {
@@ -159,19 +154,20 @@ class Engine {
                 trade.buyDate = date;
                 trade.riskValue = getValueFromPercentage(price, rule.limits.riskPercentage, 'risk');
                 trade.profitValue = getValueFromPercentage(price, rule.limits.profitPercentage, 'profit');
-                trade.boughtShares = Number(get(lastOrder, 'cumulative_quantity'));
+                trade.boughtShares = Number(get(lastOrder, 'qty'));
 
                 // Partially filled buy orders will cancel unfilled shares
+                //todo fix rule.quantity is not defnined.
                 if (trade.boughtShares < rule.quantity) {
-                  const canceledSuccessfully = await this.cancelLastOrder(user, lastOrder, rule.symbol, rule.name);
+                  const canceledSuccessfully = await this.cancelLastOrder(lastOrder, rule.symbol, rule.name);
                   assert(canceledSuccessfully, `Failed to cancel partial buy order: ${lastOrder.id}`);
                 }
               } else if (lastOrderIsSell) {
-                trade.soldShares = Number(get(lastOrder, 'cumulative_quantity'));
+                trade.soldShares = Number(get(lastOrder, 'qty'));
 
                 // Partially filled sell orders will cancel unfilled shares and try to resell
                 if (trade.soldShares < trade.boughtShares) {
-                  const canceledSuccessfully = await this.cancelLastOrder(user, lastOrder, rule.symbol, rule.name);
+                  const canceledSuccessfully = await this.cancelLastOrder(lastOrder, rule.symbol, rule.name);
                   assert(canceledSuccessfully, `Failed to cancel partial sell  order: ${lastOrder.id}`);
                 } else {
                   trade.sellPrice = price;
@@ -198,7 +194,7 @@ class Engine {
             }
             // Cancel pending(non-filled) order
             else {
-              const canceledSuccessfully = await this.cancelLastOrder(user, lastOrder, rule.symbol, rule.name);
+              const canceledSuccessfully = await this.cancelLastOrder(lastOrder, rule.symbol, rule.name);
               assert(canceledSuccessfully, `Failed to cancel order: ${lastOrder.id}`);
 
               if (lastOrderIsBuy) {
@@ -362,19 +358,18 @@ class Engine {
 
   /**
    * Cancels pending order
-   * @param user
    * @param lastOrder
    * @param name
    * @param symbol
    * @returns {Promise}
    */
-  cancelLastOrder(user, lastOrder, symbol, name) {
-    if (['canceled', 'cancelled'].includes(get(lastOrder, 'state'))) {
+  cancelLastOrder(lastOrder, symbol, name) {
+    if (['canceled', 'cancelled'].includes(get(lastOrder, 'status'))) {
       return Promise.resolve(true);
     }
 
     if (get(lastOrder, 'state') !== 'filled' && get(lastOrder, 'cancel')) {
-      return rh.postWithAuth(user, lastOrder.cancel)
+      return alpaca.cancelOrder(lastOrder.id)
         .then(json => {
           logger.orderCanceled({ ...lastOrder, symbol, name, json });
           return true;

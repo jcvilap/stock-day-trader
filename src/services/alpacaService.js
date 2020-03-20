@@ -31,11 +31,19 @@ class AlpacaApiService {
   }
 
   getOrders() {
-    return this.alpaca.getOrders({});
+    return this.alpaca.getOrders();
+  }
+
+  getOrder(id) {
+    return this.alpaca.getOrder(id);
   }
 
   placeOrder(options) {
     return this.alpaca.createOrder(options);
+  }
+
+  cancelOrder(id) {
+    return this.alpaca.cancelOrder(id);
   }
 }
 
