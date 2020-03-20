@@ -157,8 +157,7 @@ class Engine {
                 trade.boughtShares = Number(get(lastOrder, 'qty'));
 
                 // Partially filled buy orders will cancel unfilled shares
-                //todo fix rule.quantity is not defnined.
-                if (trade.boughtShares < rule.quantity) {
+                if (trade.boughtShares < rule.numberOfShares) {
                   const canceledSuccessfully = await this.cancelLastOrder(lastOrder, rule.symbol, rule.name);
                   assert(canceledSuccessfully, `Failed to cancel partial buy order: ${lastOrder.id}`);
                 }
