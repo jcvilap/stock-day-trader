@@ -1,6 +1,7 @@
 const { get, uniq, isString, set } = require('lodash');
 const moment = require('moment');
 const { Query } = require('mingo');
+const Order = require('../entities/Order');
 
 const { Trade, queries: { getActiveRulesByFrequency, getIncompleteTrades } } = require('../models');
 const tv = require('../services/tvApiService');
@@ -139,22 +140,23 @@ class Engine {
                 alpaca.getOrder(lastOrderId),
               ]);
             }
+            lastOrder = new Order(lastOrder);
             assert(lastOrder, `Fatal error. Order not found for order id: ${lastOrderId} and trade id: ${trade._id}`);
 
-            const lastOrderIsFilled = ['partially_filled', 'filled'].includes(get(lastOrder, 'status'));
+            const lastOrderIsFilled = lastOrder.isFilled || lastOrder.isPartiallyFilled;
             lastOrderIsSell = lastOrderId === get(trade, 'sellOrderId');
             lastOrderIsBuy = lastOrderId === get(trade, 'buyOrderId');
 
             if (lastOrderIsFilled) {
-              const price = Number(get(lastOrder, 'filled_avg_price'));
-              const date = new Date(get(lastOrder, 'updated_at'));
+              const price = lastOrder.filledPrice;
+              const date = lastOrder.lastUpdateDate;
 
               if (lastOrderIsBuy && !trade.buyPrice) {
                 trade.buyPrice = price;
                 trade.buyDate = date;
                 trade.riskValue = getValueFromPercentage(price, rule.limits.riskPercentage, 'risk');
                 trade.profitValue = getValueFromPercentage(price, rule.limits.profitPercentage, 'profit');
-                trade.boughtShares = Number(get(lastOrder, 'qty'));
+                trade.boughtShares = lastOrder.boughtShares;
 
                 // Partially filled buy orders will cancel unfilled shares
                 if (trade.boughtShares < rule.numberOfShares) {
@@ -162,7 +164,7 @@ class Engine {
                   assert(canceledSuccessfully, `Failed to cancel partial buy order: ${lastOrder.id}`);
                 }
               } else if (lastOrderIsSell) {
-                trade.soldShares = Number(get(lastOrder, 'qty'));
+                trade.soldShares = lastOrder.boughtShares;
 
                 // Partially filled sell orders will cancel unfilled shares and try to resell
                 if (trade.soldShares < trade.boughtShares) {
@@ -363,14 +365,14 @@ class Engine {
    * @returns {Promise}
    */
   cancelLastOrder(lastOrder, symbol, name) {
-    if (['canceled', 'cancelled'].includes(get(lastOrder, 'status'))) {
+    if (lastOrder.isCancelled) {
       return Promise.resolve(true);
     }
 
-    if (get(lastOrder, 'state') !== 'filled' && get(lastOrder, 'cancel')) {
+    if (lastOrder.isFilled) {
       return alpaca.cancelOrder(lastOrder.id)
         .then(json => {
-          logger.orderCanceled({ ...lastOrder, symbol, name, json });
+          logger.orderCanceled({ ...lastOrder.order, symbol, name, json });
           return true;
         })
         .catch(() => false);
