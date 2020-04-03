@@ -1,4 +1,4 @@
-const { get, uniq } = require('lodash');
+const { get, uniq, assign } = require('lodash');
 const moment = require('moment');
 const { Query } = require('mingo');
 
@@ -122,7 +122,7 @@ class Engine {
           /**
            * Trade management
            */
-          if(this.manageTrade(context)) return;
+          if( await this.manageTrade(context)) return;
 
           this.updatePricesContext(context);
 
@@ -339,9 +339,12 @@ class Engine {
         }
       }
     }
-    context.lastOrderIsSell = lastOrderIsSell;
-    context.lastOrderIsBuy = lastOrderIsBuy;
-    context.trade = trade;
+
+    assign(context, {
+      lastOrderIsBuy,
+      lastOrderIsSell,
+      trade
+    });
   }
 
   updatePricesContext(context) {
@@ -373,14 +376,21 @@ class Engine {
     const profitPriceReached = profitValue && profitValue < price;
     const commonOptions = { user: this.user, symbol, price, numberOfShares, rule, trade };
 
-    context.lastOrderIsBuy = lastOrderIsBuy;
-    context.commonOptions = commonOptions;
-    context.holdOvernight = holdOvernight;
-    context.riskPriceReached = riskPriceReached;
-    context.profitPriceReached = profitPriceReached;
+    assign(context, {
+      holdOvernight,
+      commonOptions,
+      buyQuery,
+      sellQuery,
+      metadata,
+      riskPriceReached,
+      profitPriceReached,
+      price,
+      riskValue,
+      lastOrderIsBuy,
+    });
   }
 
-  async buyAndSell(context) {
+  buyAndSell(context) {
     const promises = [];
     const {
       holdOvernight,
