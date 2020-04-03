@@ -37,6 +37,10 @@ class Order {
   get id() {
     return this.order.id;
   }
+
+  get clientId() {
+    return this.order.client_order_id;
+  }
 }
 
 module.exports = Order;

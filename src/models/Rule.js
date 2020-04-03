@@ -3,6 +3,10 @@ const uuid = require('uuid/v1');
 const crypto = require('crypto');
 const { getInstrumentBySymbol } = require('../services/alpacaService');
 const { ONE_MINUTE, FIVE_SECONDS } = require('../services/utils');
+const alpaca = require('../services/alpacaService');
+const { get, isString } = require('lodash');
+const logger = require('../services/logService');
+const Order = require('../entities/Order');
 
 const Rule = new mongoose.Schema({
   /**
@@ -128,6 +132,28 @@ Rule.methods.UUID = function () {
   }
 
   return null;
+};
+
+Rule.methods.getOrderById = async function(orderId) {
+  if(!this.orders)
+    await this.fillOrders();
+
+  return Promise.resolve(
+    this.orders.find(({ id }) => id === orderId)
+  );
+};
+
+Rule.methods.fillOrders = function(){
+  return alpaca.getOrders()
+    .then((orders = []) => {
+      this.orders = orders.map(o => new Order(o)).filter(o => isString(o.clientId) && o.clientId.endsWith(this.refId));
+    })
+    .catch(error => {
+      if (get(error, 'message').includes('Request was throttled')) {
+        return [];
+      }
+      logger.error(error);
+    });
 };
 // endregion
 
