@@ -93,11 +93,15 @@ class Engine {
     return Promise.all(orderPromises).catch(error => logger.error(error));
   }
 
+  isRulePending(rule) {
+    return this.orderPendingMap.has(rule.id.toString());
+  }
+
   async processFeeds(frequency) {
     try {
       const { isClosedNow, secondsLeftToMarketClosed } = this.marketHours;
       const secondsToMarketClosed = secondsLeftToMarketClosed;
-      this.rules[frequency] = this.rules[frequency].filter(r => r.enabled && !this.orderPendingMap.has(r._id.toString()));
+      this.rules[frequency] = this.rules[frequency].filter(r => r.enabled && this.isRulePending(r));
       const rules = this.rules[frequency];
 
       if ((!OVERRIDE_MARKET_CLOSE && isClosedNow) || !rules.length) {
@@ -288,7 +292,8 @@ class Engine {
             const canceledSuccessfully = await this.cancelLastOrder(lastOrder, rule.symbol, rule.name);
             assert(canceledSuccessfully, `Failed to cancel partial buy order: ${lastOrder.id}`);
           }
-        } else if (lastOrderIsSell) {
+        }
+        else if (lastOrderIsSell) {
           trade.soldShares = lastOrder.boughtShares;
 
           // Partially filled sell orders will cancel unfilled shares and try to resell
@@ -302,10 +307,6 @@ class Engine {
 
             // Save and close trade
             await trade.save();
-
-            // Reset trade vars
-            trade = null;
-            lastOrder = null;
 
             // Exit if rule has no strategy to continue
             if (rule.disableAfterSold || !rule.strategy.in) {
